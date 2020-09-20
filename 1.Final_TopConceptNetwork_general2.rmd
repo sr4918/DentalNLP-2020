@@ -1,0 +1,194 @@
+#done for D1 Last only
+```{r}
+#install.packages("wordcloud")
+#install.packages("tm")
+#install.packages("SnowballC")
+#install.packages("tokenizers")
+#install.packages("plyr")
+#install.packages("qdap")
+```
+
+
+
+```{r}
+library(igraph)
+library(wordcloud)
+library(tm)
+library(SnowballC)
+library(tokenizers)
+library(plyr)
+library(textstem)
+library(lubridate)
+library(readr)
+library(dplyr)
+library(qdap)
+library(qdapTools)
+library(tidyr)
+library(textstem)
+library(data.table)
+library(tokenizers)
+```
+
+
+
+
+
+```{r}
+ 
+        data_general<-read.csv("C:/Users/samee/Dropbox/2. PhD ResearchWork/Dental NLP-LAK2021-Short Paper/ReflectionData/D1F-D4LReflectionStatements/D4LastReflectionStatements1.csv", encoding = "UTF-8")
+        submissions_text_general <- data_general$Text 
+        noReflections_general<-length(submissions_text_general)
+        submissions_text_general = lapply(submissions_text_general, as.character)
+        sentences_general <- tokenize_sentences(submissions_text_general)
+        typeof(sentences_general) # each list item consists of all sentences in the same statement
+        sentences_unlisted_general <- unlist(sentences_general, recursive = TRUE, use.names = TRUE)
+        sentences_corpus_general <- Corpus(VectorSource(sentences_unlisted_general))
+        length(sentences_unlisted_general)
+    
+        toSpace <- content_transformer(function (x, pattern) gsub(pattern, "", x, fixed = T))
+    sentences_corpus_clean_general <-tm_map(sentences_corpus_general, toSpace, "/")
+    sentences_corpus_clean_general <-tm_map(sentences_corpus_clean_general, toSpace, "@")
+    sentences_corpus_clean_general <-tm_map(sentences_corpus_clean_general, toSpace, "Ã¢â‚¬â„¢")
+    sentences_corpus_clean_general <-tm_map(sentences_corpus_clean_general, toSpace, "Ã¢â‚¬Å“")
+    sentences_corpus_clean_general <-tm_map(sentences_corpus_clean_general, toSpace, "Ã¢â‚¬Â")
+    sentences_corpus_clean_general <-tm_map(sentences_corpus_clean_general, toSpace, "ã¢â,¬â¢")
+    #sentences_corpus_clean <-tm_map(sentences_corpus_clean, toSpace, "ã¢â,¬â¢")
+    # sentences_corpus_clean <-tm_map(sentences_corpus_clean, toSpace, "ã¢â , ¬â  ¢")
+    #sentences_corpus_clean <-tm_map(sentences_corpus_clean, toSpace, "ãfâ¢ã¢â???sâ¬ã¢â???zâ¢")
+ 
+
+
+    sentences_corpus_clean_general <- tm_map(sentences_corpus_clean_general, stripWhitespace)
+    sentences_corpus_clean_general <- tm_map(sentences_corpus_clean_general, removeNumbers)
+    sentences_corpus_clean_general <- tm_map(sentences_corpus_clean_general, removePunctuation)
+## tranform to lower case
+    sentences_corpus_clean_general <- tm_map(sentences_corpus_clean_general, content_transformer(tolower))
+#sentences_corpus_clean
+    sentences_corpus_clean_nonstopwords_general <- tm_map(sentences_corpus_clean_general, removeWords, stopwords("en"))
+    sentences_corpus_clean_nonstopwords_general
+    sentences_corpus_clean_nonstopwords_unlisted_general <- unlist(sentences_corpus_clean_nonstopwords_general, recursive = TRUE, use.names = TRUE)
+   ## lemmatize 
+    sentences_corpus_clean_nonstopwords_lemmatized_general <- lemmatize_strings(sentences_corpus_clean_nonstopwords_unlisted_general)
+    length(sentences_corpus_clean_nonstopwords_lemmatized_general)
+    sentences_corpus_clean_nonstopwords_lemmatized_general <- sentences_corpus_clean_nonstopwords_lemmatized_general[-length(sentences_corpus_clean_nonstopwords_lemmatized_general)]
+    num_sentences_general<-length(sentences_corpus_clean_nonstopwords_lemmatized_general)
+
+    sentences_dataframe_general <- as.data.frame(sentences_corpus_clean_nonstopwords_lemmatized_general)
+    sentences_dataframe_general$doc_id<-row.names(sentences_dataframe_general)
+    colnames(sentences_dataframe_general)<-c("Text", "doc_id")
+    View(sentences_dataframe_general)
+    write.csv(sentences_dataframe_general, "C:/Users/samee/Dropbox/2. PhD ResearchWork/Dental NLP-LAK2021-Short Paper/RResults/D4L_Sentences_lemmatized.csv",row.names = F)
+
+
+
+```
+
+```{r}
+    textdata_general<-sentences_dataframe_general
+ #co occurrences of text words
+   x1_general<-  t(mtabulate(with(textdata_general, by(textdata_general$Text,textdata_general$doc_id, bag_o_words)))>0)
+   #row sum of X1 is number of sentences in which the word appears: sentence based word freq
+   #and same is given by the diogonal values of out1
+    out1_general <- x1_general %*% t(x1_general)
+    out1_general[upper.tri(out1_general, diag=FALSE)] <- NA
+    out1_2_general <- matrix2df(out1_general, "word1") %>%
+      gather(word2, freq, -word1) %>%
+      na.omit() 
+    rownames(out1_2_general) <- NULL
+    out1_2_general
+    
+    edgelist_general <- as.data.frame(out1_2_general)
+    edgelist_filtered_general <- edgelist_general[edgelist_general$freq >= "1", ]
+  
+     #sentnece based word freq = edgelist where word1 = word2
+     sentence_based_word_freq_general<-filter(edgelist_filtered_general, word1==word2)
+    sentence_based_word_freq_general<-  sentence_based_word_freq_general[order(sentence_based_word_freq_general$freq, decreasing = T),]
+    sentence_based_word_freq_general$proportion<- sentence_based_word_freq_general$freq/nrow(textdata_general)
+    write.csv(sentence_based_word_freq_general, "C:/Users/samee/Dropbox/2. PhD ResearchWork/Dental NLP-LAK2021-Short Paper/RResults/D4Lsentence_based_word_freq.csv",row.names = F)
+  
+    #remaining edges are true edges  
+    edgelist_filtered_general<-filter(edgelist_filtered_general, word1!=word2)
+    edgelist_filtered_sorted_general<-edgelist_filtered_general[order(edgelist_filtered_general$freq, decreasing = T),]
+    write.csv(edgelist_filtered_sorted_general,"C:/Users/samee/Dropbox/2. PhD ResearchWork/Dental NLP-LAK2021-Short Paper/RResults/D4Ledgelist.csv",row.names = F)
+    
+```
+
+
+```{r} 
+#graphs based on top15 edges
+
+    final_edgelist_general<-edgelist_filtered_sorted_general
+    final_vertex_general<-select(sentence_based_word_freq_general, word1,freq)
+    final_edgelist2_general<-merge(final_edgelist_general,final_vertex_general,by.x="word1", by.y = "word1")
+    final_edgelist3_general<-merge(final_edgelist2_general,final_vertex_general,by.x= "word2", by.y = "word1")
+    final_edgelist3_general<- final_edgelist3_general[, c(1, 2, 3, 5, 4)]
+    names(final_edgelist3_general)<-c("Source", "Destination", "CoocFreq","SourceFreq","DestinationFreq")
+    
+    final_edgelist3_general$mutualInformationSig <- log(num_sentences_general * final_edgelist3_general$CoocFreq / (final_edgelist3_general$SourceFreq * final_edgelist3_general$DestinationFreq))
+    final_edgelist3_general <- final_edgelist3_general[order(final_edgelist3_general$mutualInformationSig, decreasing = TRUE),]
+
+    #order by cooc freq and choose the top 15 edges
+    #color by mutual sig information
+    
+    subset_final_edgelist3_general<-final_edgelist3_general[order(final_edgelist3_general$CoocFreq,decreasing = T),]
+    subset_final_edgelist3_general<-head(subset_final_edgelist3_general,15)
+```
+
+```{r}
+    #make graph such that node size is proportional to sentences submitted
+    #edgeweight is as per raw freq
+    #edge is colored differently if its mutualsig >0 which means that the ratio of association stregth >1)
+   coocTerm<-c("professional", "patient")
+   graphNetwork_general <- graph.data.frame(subset_final_edgelist3_general, directed = F)
+   V(graphNetwork_general)$color <- ifelse(V(graphNetwork_general)$name == coocTerm[1], 'orange', ifelse(V(graphNetwork_general)$name == coocTerm[2],'coral','cornflowerblue')) 
+   V(graphNetwork_general)$size<- final_vertex_general$freq[match(V(graphNetwork_general)$name,final_vertex_general$word1)]/num_sentences_general*100
+   E(graphNetwork_general)$color <- ifelse(E(graphNetwork_general)$mutualInformationSig > 0, "darkolivegreen", "azure3")
+   E(graphNetwork_general)$width<-E(graphNetwork_general)$CoocFreq/num_sentences_general *100
+
+   pdf("C:/Users/samee/Dropbox/2. PhD ResearchWork/Dental NLP-LAK2021-Short Paper/RResults/D4L_ConceptGraph_top15_edges.pdf")
+   plot(graphNetwork_general,              
+     layout = layout.fruchterman.reingold,  # Force Directed Layout 
+     main = paste("D4L_Top15 edges", ' Graph'),
+     vertex.label.family = "sans",
+     vertex.label.cex = 0.8,
+     vertex.shape = "circle",
+     vertex.label.dist = -2,           # Labels of the nodes moved slightly
+     vertex.frame.color = 'darkolivegreen',
+     vertex.label.color = 'black',      # Color of node names
+     vertex.label.font = 2,         # Font of node names
+     vertex.label = V(graphNetwork_general)$name,       # node names
+     vertex.label.cex = 2 # font size of node names 
+)
+   dev.off()
+```
+```{r}
+#2nd methods
+#elicit top 15 concepts and all edges related to those concepts
+
+final_vertex_top15_general<-head(final_vertex_general,15)
+final_edgelist_top15_general<-filter(final_edgelist3_general,final_edgelist3_general$Source %in% final_vertex_top15_general$word1 & final_edgelist3_general$Destination %in% final_vertex_top15_general$word1)
+
+  coocTerm<-c("professional", "patient")
+   graphNetwork_top15_general <- graph.data.frame(final_edgelist_top15_general, directed = F)
+  
+    V(graphNetwork_top15_general)$color <- ifelse(V(graphNetwork_top15_general)$name == coocTerm[1], 'orange', ifelse(V(graphNetwork_top15_general)$name == coocTerm[2],'coral','cornflowerblue')) 
+   V(graphNetwork_top15_general)$size<- final_vertex_top15_general$freq[match(V(graphNetwork_top15_general)$name,final_vertex_top15_general$word1)]/num_sentences_general*100
+   E(graphNetwork_top15_general)$color <- ifelse(E(graphNetwork_top15_general)$mutualInformationSig > 0, "darkolivegreen", "azure3")
+   E(graphNetwork_top15_general)$width<-E(graphNetwork_top15_general)$CoocFreq/num_sentences_general *100
+
+   pdf("C:/Users/samee/Dropbox/2. PhD ResearchWork/Dental NLP-LAK2021-Short Paper/RResults/D4L_ConceptGraph_top15_vertex.pdf")
+   plot(graphNetwork_top15_general,              
+     layout = layout.fruchterman.reingold,  # Force Directed Layout 
+     main = paste("D4L_top15concepts", ' Graph'),
+     vertex.label.family = "sans",
+     vertex.label.cex = 0.8,
+     vertex.shape = "circle",
+     vertex.label.dist = -2,           # Labels of the nodes moved slightly
+     vertex.frame.color = 'darkolivegreen',
+     vertex.label.color = 'black',      # Color of node names
+     vertex.label.font = 2,         # Font of node names
+     vertex.label = V(graphNetwork_top15_general)$name,       # node names
+     vertex.label.cex = 2 # font size of node names 
+)
+   dev.off()
+```
